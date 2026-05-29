@@ -133,7 +133,9 @@ services:
       alertmanager:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8000/api/health || exit 1"]
+      # /healthz is intentionally unauthenticated (auth-protected paths are
+      # /api/* and /ws — the docker daemon doesn't carry credentials).
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/healthz || exit 1"]
       interval: 10s
       timeout: 3s
       retries: 5

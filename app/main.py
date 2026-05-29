@@ -16,10 +16,9 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect, status
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import admin, bootstrap, config, memtier
@@ -57,36 +56,23 @@ async def lifespan(app: FastAPI):
 
 
 # --------------------------------------------------------------------- auth (optional)
-_security = HTTPBasic(auto_error=False)
 _AUTH_ENABLED = bool(config.UI_AUTH_PASSWORD)
 if _AUTH_ENABLED:
     logger.info("HTTP Basic Auth enabled (user=%s)", config.UI_AUTH_USERNAME)
 
-
-def require_auth(credentials: HTTPBasicCredentials | None = Depends(_security)) -> None:
-    if not _AUTH_ENABLED:
-        return
-    if not credentials or not (
-        secrets.compare_digest(credentials.username, config.UI_AUTH_USERNAME) and
-        secrets.compare_digest(credentials.password, config.UI_AUTH_PASSWORD)
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Unauthorized",
-            headers={"WWW-Authenticate": 'Basic realm="autoscaler-ui"'},
-        )
+# Paths that bypass auth entirely — healthcheck + favicon need to be open
+# so docker compose healthcheck and the browser tab icon work without creds.
+_PUBLIC_PATHS = {"/healthz", "/favicon.ico"}
 
 
-def _ws_auth_ok(websocket: WebSocket) -> bool:
-    """Validate Basic credentials on the WebSocket upgrade headers.
-    Browsers send these along automatically once the user has authed for the page."""
+def _basic_auth_ok(authorization: str) -> bool:
+    """Validate an `Authorization: Basic ...` header value."""
     if not _AUTH_ENABLED:
         return True
-    raw = websocket.headers.get("authorization", "")
-    if not raw.startswith("Basic "):
+    if not authorization.startswith("Basic "):
         return False
     try:
-        decoded = base64.b64decode(raw.split(" ", 1)[1]).decode("utf-8", "ignore")
+        decoded = base64.b64decode(authorization.split(" ", 1)[1]).decode("utf-8", "ignore")
         user, _, pw = decoded.partition(":")
         return (secrets.compare_digest(user, config.UI_AUTH_USERNAME) and
                 secrets.compare_digest(pw, config.UI_AUTH_PASSWORD))
@@ -94,15 +80,37 @@ def _ws_auth_ok(websocket: WebSocket) -> bool:
         return False
 
 
-_app_deps = [Depends(require_auth)] if _AUTH_ENABLED else []
-app = FastAPI(title="Redis Cloud Autoscaler UI", lifespan=lifespan, dependencies=_app_deps)
+app = FastAPI(title="Redis Cloud Autoscaler UI", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"],
                    allow_methods=["*"], allow_headers=["*"])
+
+
+@app.middleware("http")
+async def basic_auth_middleware(request: Request, call_next):
+    """HTTP Basic Auth on every request, except the public paths above.
+    WebSocket routes don't go through HTTP middleware — they have their own
+    check inside the ws endpoint."""
+    if not _AUTH_ENABLED or request.url.path in _PUBLIC_PATHS:
+        return await call_next(request)
+    if _basic_auth_ok(request.headers.get("authorization", "")):
+        return await call_next(request)
+    return PlainTextResponse(
+        "Unauthorized", status_code=401,
+        headers={"WWW-Authenticate": 'Basic realm="autoscaler-ui"'},
+    )
 
 
 # --------------------------------------------------------------------- REST
 @app.get("/api/health")
 async def health() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@app.get("/healthz")
+async def healthz() -> dict[str, str]:
+    """Unauthenticated liveness probe — used by docker compose healthcheck.
+    Returns minimal info; the auth-protected /api/health is the same thing
+    for callers who already have credentials."""
     return {"status": "ok"}
 
 
@@ -176,7 +184,7 @@ async def auto_reset_now() -> dict[str, Any]:
 # --------------------------------------------------------------------- WebSocket
 @app.websocket("/ws")
 async def ws_endpoint(websocket: WebSocket) -> None:
-    if not _ws_auth_ok(websocket):
+    if not _basic_auth_ok(websocket.headers.get("authorization", "")):
         await websocket.close(code=1008)  # policy violation
         return
     await websocket.accept()
