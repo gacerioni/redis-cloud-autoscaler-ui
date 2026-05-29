@@ -28,6 +28,7 @@ class StateManager:
         self._lock = Lock()
         # Configured (Redis Cloud REST API)
         self.db_status: str = "loading"
+        self.db_name: str = ""
         self.db_throughput: int = 0
         self.db_memlim_gb: float = 0.0
         self.db_modified: str = ""
@@ -65,7 +66,7 @@ class StateManager:
                     "dataset_size_gb":  self._dataset_size_gb(),  # user-facing (memlim/2 if HA)
                     "last_modified":    self.db_modified,
                     "shards":           self.db_shards,
-                    "name":             "managed-db",
+                    "name":             self.db_name or "managed-db",
                     "id":               config.DB_ID,
                     "baseline_ops":     config.BASELINE_OPS,
                     "burst_ops":        config.BURST_OPS,
@@ -145,6 +146,7 @@ class StateManager:
                 if int(db["databaseId"]) == config.DB_ID:
                     with self._lock:
                         self.db_status      = db.get("status", "?")
+                        self.db_name        = db.get("name") or ""
                         self.db_throughput  = int(db["throughputMeasurement"]["value"])
                         self.db_memlim_gb   = float(db["memoryLimitInGb"])
                         self.db_modified    = db.get("lastModified") or ""
