@@ -38,10 +38,11 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
         docker.io \
     && rm -rf /var/lib/apt/lists/* /usr/share/doc /usr/share/man
 
-# Smoke-test memtier so the build fails immediately if a shared library is missing.
-RUN memtier_benchmark --version
-
 COPY --from=memtier-builder /src/memtier_benchmark /usr/local/bin/memtier_benchmark
+
+# Smoke-test memtier after the binary is in place — fails the build now
+# (instead of leaking to runtime) if any shared library is missing.
+RUN memtier_benchmark --version
 
 WORKDIR /app
 COPY requirements.txt .
