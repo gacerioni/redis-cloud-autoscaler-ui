@@ -60,16 +60,22 @@ services:
         fi
 
         echo "rendering: endpoint=$${REDIS_CLOUD_INTERNAL_ENDPOINT} threshold=$$THROUGHPUT_THRESHOLD_OPS memory=$$MEM_ENABLED"
-        envsubst < /templates/prometheus.template.yml > /shared/prometheus.yml
-        envsubst < /templates/alert.rules.template    > /shared/alert.rules
+        # IMPORTANT: pass explicit var list to envsubst. Without it, envsubst
+        # would also expand Prometheus' own `$labels.foo` syntax in the alert
+        # rules templates, mangling them to `.foo` and breaking template
+        # evaluation at alert time. We only want to substitute OUR variables.
+        SUBST_VARS='$${REDIS_CLOUD_INTERNAL_ENDPOINT} $${REDIS_CLOUD_AUTOSCALER_HOST} $${THROUGHPUT_THRESHOLD_OPS} $${THROUGHPUT_THRESHOLD_FOR} $${MEMORY_THRESHOLD_PCT} $${MEMORY_THRESHOLD_FOR}'
+        envsubst "$$SUBST_VARS" < /templates/prometheus.template.yml > /shared/prometheus.yml
+        envsubst "$$SUBST_VARS" < /templates/alert.rules.template    > /shared/alert.rules
         if [ "$$MEM_ENABLED" = "true" ] || [ "$$MEM_ENABLED" = "1" ] || [ "$$MEM_ENABLED" = "yes" ]; then
           echo "memory scaling: ENABLED"
-          envsubst < /templates/alert.rules.memory.template >> /shared/alert.rules
+          envsubst "$$SUBST_VARS" < /templates/alert.rules.memory.template >> /shared/alert.rules
         else
           echo "memory scaling: disabled (set MEMORY_SCALING_ENABLED=true to turn on)"
         fi
         cp /templates/alertmanager.yml /shared/alertmanager.yml
         echo "rendered:"; ls -la /shared
+        echo "alert.rules content (first 40 lines):"; head -40 /shared/alert.rules
 
   # ---- data plane -----------------------------------------------------------
   autoscaler:
