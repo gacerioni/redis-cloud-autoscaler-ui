@@ -1,0 +1,8 @@
+# Caddy fetches/renews a Let's Encrypt certificate automatically. Five lines.
+{
+    email {$DEMO_EMAIL}
+}
+
+{$DEMO_DOMAIN} {
+    reverse_proxy ui:8000
+}

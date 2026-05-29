@@ -1,0 +1,16 @@
+global:
+  resolve_timeout: 1m
+
+route:
+  receiver: autoscaler-webhook
+  group_wait:      10s
+  group_interval:  1m
+  # Long repeat interval keeps the webhook from re-firing while the alert
+  # is still active (e.g. DB sitting at its scale ceiling).
+  repeat_interval: 1h
+
+receivers:
+  - name: autoscaler-webhook
+    webhook_configs:
+      - url: "http://autoscaler:8080/alerts"
+        send_resolved: true

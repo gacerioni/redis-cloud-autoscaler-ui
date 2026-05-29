@@ -1,0 +1,143 @@
+# =============================================================================
+# Redis Cloud Autoscaler — distributable demo stack
+#
+# Five services, all configured from .env:
+#   - init-config   (alpine, runs once; renders Prometheus templates → volume)
+#   - autoscaler    (upstream: redis-field-engineering/redis-cloud-autoscaler)
+#   - prometheus    (reads rendered config from the shared volume)
+#   - alertmanager  (deduplicates and webhooks the autoscaler)
+#   - ui            (this repo: FastAPI + WebSocket + SPA)
+#
+# Bring up:
+#   cp .env.example .env && $EDITOR .env
+#   docker compose up -d
+#
+# For TLS / public deployment, additionally use:
+#   docker compose -f docker-compose.yml -f docker-compose.public.yml up -d
+# =============================================================================
+
+x-image-ui: &image-ui ${UI_IMAGE:-gacerioni/redis-cloud-autoscaler-ui:latest}
+
+services:
+
+  # ---- init: render Prometheus templates ------------------------------------
+  # Alpine + envsubst. Runs once, writes the rendered config files into a
+  # shared volume, then exits. Prometheus & Alertmanager depend on its
+  # successful completion before starting.
+  init-config:
+    image: alpine:3.20
+    container_name: autoscaler-init
+    env_file: .env
+    volumes:
+      - ./prometheus:/templates:ro
+      - prometheus-config:/shared
+    command:
+      - sh
+      - -ec
+      - |
+        apk add --no-cache gettext > /dev/null
+        export REDIS_CLOUD_AUTOSCALER_HOST=autoscaler
+        export THROUGHPUT_THRESHOLD_OPS=$$(( $${BASELINE_OPS:-25000} * $${THROUGHPUT_THRESHOLD_PCT:-80} / 100 ))
+        MEM_ENABLED=$$(echo "$${MEMORY_SCALING_ENABLED:-false}" | tr '[:upper:]' '[:lower:]')
+        echo "rendering: THROUGHPUT_THRESHOLD_OPS=$$THROUGHPUT_THRESHOLD_OPS memory=$$MEM_ENABLED"
+        envsubst < /templates/prometheus.template.yml > /shared/prometheus.yml
+        envsubst < /templates/alert.rules.template    > /shared/alert.rules
+        if [ "$$MEM_ENABLED" = "true" ] || [ "$$MEM_ENABLED" = "1" ] || [ "$$MEM_ENABLED" = "yes" ]; then
+          echo "memory scaling: ENABLED"
+          envsubst < /templates/alert.rules.memory.template >> /shared/alert.rules
+        else
+          echo "memory scaling: disabled (set MEMORY_SCALING_ENABLED=true to turn on)"
+        fi
+        cp /templates/alertmanager.yml /shared/alertmanager.yml
+        echo "rendered:"; ls -la /shared
+
+  # ---- data plane -----------------------------------------------------------
+  autoscaler:
+    image: ghcr.io/redis-field-engineering/redis-cloud-autoscaler:latest
+    container_name: autoscaler
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      ALERT_MANAGER_HOST:          alertmanager
+      ALERT_MANAGER_PORT:          "9093"
+      REDIS_CLOUD_AUTOSCALER_HOST: autoscaler
+    # No `ports:` mapping by default — only reachable on the internal
+    # compose network. Use docker-compose.expose.yml to publish for debug.
+    expose: ["8080"]
+    healthcheck:
+      # /rules returns 200 once Spring is fully up
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/rules || exit 1"]
+      interval: 10s
+      timeout:  4s
+      retries:  18      # ~3 min grace period for Spring Boot warmup
+      start_period: 30s
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+    volumes:
+      - prometheus-config:/etc/prometheus:ro
+    expose: ["9090"]
+    depends_on:
+      init-config:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:9090/-/ready || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: alertmanager
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+    volumes:
+      - prometheus-config:/etc/alertmanager:ro
+    expose: ["9093"]
+    depends_on:
+      init-config:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:9093/-/ready || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ---- web UI ---------------------------------------------------------------
+  ui:
+    image: *image-ui
+    container_name: autoscaler-ui
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PROMETHEUS_URL:   http://prometheus:9090
+      AUTOSCALER_URL:   http://autoscaler:8080
+      ALERTMANAGER_URL: http://alertmanager:9093
+    volumes:
+      # Read-only socket so the UI can `docker logs autoscaler` for the
+      # "Autoscaler events" panel. Remove this mount if you want stricter
+      # isolation; the panel will simply stay empty.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "${UI_PORT:-8000}:8000"
+    depends_on:
+      autoscaler:
+        condition: service_healthy
+      prometheus:
+        condition: service_healthy
+      alertmanager:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/api/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+
+volumes:
+  prometheus-config:

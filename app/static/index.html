@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Redis Autoscaler Demo</title>
+  <link rel="icon" href="/logo.png" type="image/png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<!-- ========== HEADER ========== -->
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <img src="/logo.png" alt="Redis" class="logo">
+      <div class="brand-divider"></div>
+      <div>
+        <h1>Autoscaler Demo</h1>
+        <p id="tagline">loading…</p>
+      </div>
+    </div>
+    <div class="brand-right">
+      <div class="db-tag">
+        <span class="db-tag-label">database</span>
+        <span class="db-tag-value" id="db-name">database-globo</span>
+      </div>
+      <div class="ws-status">
+        <span id="ws-dot" class="ws-dot"></span>
+        <span id="ws-status">connecting…</span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ========== MAIN GRID ========== -->
+<main>
+
+  <!-- HOW IT WORKS (collapsible) -->
+  <section class="card span-12 howitworks-card">
+    <button type="button" class="howitworks-toggle" id="howitworks-toggle" aria-expanded="false">
+      <span class="howitworks-icon">▸</span>
+      <span class="howitworks-label">How it works</span>
+      <span class="howitworks-hint">click to expand the architecture</span>
+    </button>
+    <div class="howitworks-body" id="howitworks-body">
+      <div class="howitworks-grid">
+        <div class="howitworks-diagram">
+          <svg viewBox="0 0 960 360" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Redis Cloud Autoscaler architecture">
+            <defs>
+              <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="#9ca3af"/>
+              </marker>
+              <marker id="arrowRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="#DC382D"/>
+              </marker>
+            </defs>
+
+            <!-- Top row: Redis DB -> Prometheus -> Alertmanager -->
+
+            <!-- Redis Cloud DB -->
+            <g>
+              <rect x="30" y="30" width="240" height="130" rx="14" fill="#131826" stroke="#DC382D" stroke-width="1.5"/>
+              <image href="/logos/redis.png" x="50" y="48" width="56" height="56" preserveAspectRatio="xMidYMid meet"/>
+              <text x="120" y="72" fill="#f3f4f6" font-family="Inter, sans-serif" font-size="14" font-weight="700">Redis Cloud Pro</text>
+              <text x="120" y="91" fill="#9ca3af" font-family="Inter, sans-serif" font-size="11">database</text>
+              <text x="50" y="135" fill="#6b7280" font-family="JetBrains Mono, monospace" font-size="10">exposes /metrics on :8070</text>
+            </g>
+
+            <!-- Prometheus -->
+            <g>
+              <rect x="350" y="30" width="240" height="130" rx="14" fill="#131826" stroke="#f59e0b" stroke-width="1.5"/>
+              <image href="/logos/prometheus.svg" x="370" y="48" width="56" height="56" preserveAspectRatio="xMidYMid meet"/>
+              <text x="440" y="72" fill="#f3f4f6" font-family="Inter, sans-serif" font-size="14" font-weight="700">Prometheus</text>
+              <text x="440" y="91" fill="#9ca3af" font-family="Inter, sans-serif" font-size="11">scrape + evaluate alert rules</text>
+              <text x="370" y="135" fill="#6b7280" font-family="JetBrains Mono, monospace" font-size="10">bdb_instantaneous_ops_per_sec &gt; 800</text>
+            </g>
+
+            <!-- Alertmanager -->
+            <g>
+              <rect x="670" y="30" width="240" height="130" rx="14" fill="#131826" stroke="#f59e0b" stroke-width="1.5"/>
+              <image href="/logos/alertmanager.svg" x="690" y="48" width="56" height="56" preserveAspectRatio="xMidYMid meet"/>
+              <text x="760" y="72" fill="#f3f4f6" font-family="Inter, sans-serif" font-size="14" font-weight="700">Alertmanager</text>
+              <text x="760" y="91" fill="#9ca3af" font-family="Inter, sans-serif" font-size="11">dedupe + route webhook</text>
+              <text x="690" y="135" fill="#6b7280" font-family="JetBrains Mono, monospace" font-size="10">POST http://autoscaler:8080/alerts</text>
+            </g>
+
+            <!-- Bottom row: Autoscaler -->
+
+            <!-- Autoscaler -->
+            <g>
+              <rect x="510" y="220" width="280" height="120" rx="14" fill="#131826" stroke="#3b82f6" stroke-width="1.5"/>
+              <image href="/logos/spring.svg" x="530" y="244" width="56" height="56" preserveAspectRatio="xMidYMid meet"/>
+              <text x="600" y="262" fill="#f3f4f6" font-family="Inter, sans-serif" font-size="14" font-weight="700">Autoscaler</text>
+              <text x="600" y="282" fill="#9ca3af" font-family="Inter, sans-serif" font-size="11">Spring Boot · Redis Field Engineering</text>
+              <text x="530" y="318" fill="#6b7280" font-family="JetBrains Mono, monospace" font-size="10">match alert → look up scaling rule</text>
+            </g>
+
+            <!-- Arrows -->
+
+            <!-- Redis -> Prometheus (scrape) -->
+            <line x1="270" y1="95" x2="346" y2="95" stroke="#9ca3af" stroke-width="2" marker-end="url(#arrow)"/>
+            <text x="308" y="85" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" fill="#9ca3af">scrape</text>
+
+            <!-- Prometheus -> Alertmanager (fire) -->
+            <line x1="590" y1="95" x2="666" y2="95" stroke="#9ca3af" stroke-width="2" marker-end="url(#arrow)"/>
+            <text x="628" y="85" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" fill="#9ca3af">fire</text>
+
+            <!-- Alertmanager -> Autoscaler (webhook) -->
+            <path d="M 790 160 L 790 200 Q 790 220 770 220 L 700 220" fill="none" stroke="#9ca3af" stroke-width="2" marker-end="url(#arrow)"/>
+            <text x="805" y="195" font-family="JetBrains Mono, monospace" font-size="11" fill="#9ca3af">webhook</text>
+
+            <!-- Autoscaler -> Redis Cloud (REST API scale) - dashed red, the magic moment -->
+            <path d="M 510 270 Q 250 270 150 165" fill="none" stroke="#DC382D" stroke-width="2.5" marker-end="url(#arrowRed)" stroke-dasharray="6,4"/>
+            <text x="290" y="295" font-family="JetBrains Mono, monospace" font-size="11" fill="#DC382D" font-weight="600">PUT /databases/{id}  ← scale</text>
+          </svg>
+        </div>
+        <div class="howitworks-text">
+          <h3>The autoscaler is scale-up only</h3>
+          <p>
+            Prometheus scrapes the database's native metrics endpoint
+            (<code>:8070</code>) and evaluates alert rules. When usage crosses
+            the threshold, Alertmanager fires a webhook to the autoscaler,
+            which looks up the matching scaling rule for that database and
+            calls the Redis Cloud REST API to apply the new size.
+          </p>
+          <p>
+            <strong>Scale-down is intentionally NOT reactive</strong> —
+            yo-yo behavior would destabilize production. Real customers
+            schedule the return to baseline after the event.
+          </p>
+          <h3>What's new in Redis Cloud Pro</h3>
+          <p>
+            <strong>Atomic Slot Migration (ASM)</strong> and auto-shard
+            rebalancing replace the old "double the shards" approach with
+            granular slot-level moves. Result: smaller scale-up steps, real
+            scale-down, and lower latency impact during the migration.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- DB CONFIGURED -->
+  <section class="card span-4">
+    <div class="card-header">
+      <h2 class="card-title">DB configured</h2>
+      <span class="card-sub">Redis Cloud REST API</span>
+    </div>
+    <div class="card-body stack-tight">
+      <div class="row">
+        <span class="label">Status</span>
+        <span id="db-status" class="value">…</span>
+      </div>
+      <div class="row">
+        <span class="label">Throughput</span>
+        <div class="value-block">
+          <div id="db-throughput" class="big-number">— <span class="unit">ops/sec</span></div>
+          <div id="db-throughput-badge" class="badge">—</div>
+        </div>
+      </div>
+      <div class="row">
+        <span class="label">Dataset</span>
+        <div class="value-block">
+          <div id="db-memlim" class="med-number">— GB</div>
+          <div id="db-memlim-physical" class="badge" style="color: var(--c-text-dimmer)">—</div>
+        </div>
+      </div>
+      <div class="row">
+        <span class="label">Shards</span>
+        <span id="db-shards" class="value med-number">—</span>
+      </div>
+      <div class="row small">
+        <span class="label">Last modified</span>
+        <span id="db-modified" class="value mono dim">—</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ALERTS -->
+  <section class="card span-4">
+    <div class="card-header">
+      <h2 class="card-title">Alerts</h2>
+      <span class="card-sub">Prometheus rules</span>
+    </div>
+    <div id="alerts-list" class="card-body stack-tight">
+      <div class="dim">loading…</div>
+    </div>
+  </section>
+
+  <!-- LIVE METRICS -->
+  <section class="card span-4">
+    <div class="card-header">
+      <h2 class="card-title">Live metrics</h2>
+      <span class="card-sub">Prometheus scrape · 15s</span>
+    </div>
+    <div class="card-body stack">
+      <div>
+        <div class="row baseline">
+          <span class="label">Throughput</span>
+          <span id="live-ops-pct" class="dim micro">— of configured</span>
+        </div>
+        <div id="live-ops" class="huge-number">0 <span class="unit">ops/sec</span></div>
+        <div class="bar">
+          <div id="live-ops-bar" class="bar-fill bar-redis"></div>
+        </div>
+      </div>
+      <div>
+        <div class="row baseline">
+          <span class="label">Memory</span>
+          <span id="live-mem-pct" class="dim micro">— of limit</span>
+        </div>
+        <div id="live-mem" class="huge-number">0 <span class="unit">MB</span></div>
+        <div class="bar">
+          <div id="live-mem-bar" class="bar-fill bar-blue"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- AUTO-RESET (scheduled scale-down) — placed above the chart on purpose:
+       it's a core talking point of the demo (production pattern), and the
+       customer should read the disclaimer before watching numbers move. -->
+  <section class="card span-12 reset-card" id="reset-card">
+    <div class="card-header">
+      <h2 class="card-title"><span class="reset-icon">⏱</span> Scheduled scale-down</h2>
+      <span class="card-sub">demo-only window — see note</span>
+    </div>
+    <div class="card-body reset-body">
+      <div class="reset-main">
+        <div class="reset-state-block">
+          <div class="reset-state-label">Status</div>
+          <div id="reset-status" class="reset-state-value">idle — DB at baseline</div>
+        </div>
+        <div class="reset-state-block">
+          <div class="reset-state-label">Countdown</div>
+          <div id="reset-countdown" class="reset-state-value reset-countdown">—</div>
+        </div>
+        <div class="reset-progress-wrap">
+          <div class="reset-progress-track">
+            <div id="reset-progress" class="reset-progress-fill"></div>
+          </div>
+        </div>
+        <div class="reset-actions">
+          <button type="button" id="btn-reset-now"    class="btn btn-reset-now"    disabled>Reset now</button>
+          <button type="button" id="btn-reset-cancel" class="btn btn-reset-cancel" disabled>Cancel</button>
+        </div>
+      </div>
+      <div class="reset-disclaimer">
+        <strong>How this works in production:</strong> reactive scale-down is dangerous —
+        oscillating traffic causes yo-yo scaling and destabilizes the cluster.
+        Real customers use either a manual trigger after the event or a long scheduled window
+        (typically <strong>≥ 3 hours</strong>) via cron. For the demo we use a short
+        <span id="reset-window-label">5 minute</span> window so the run is reproducible —
+        the autoscaler itself is scale-up only.
+      </div>
+    </div>
+  </section>
+
+  <!-- CHART -->
+  <section class="card span-12">
+    <div class="card-header">
+      <h2 class="card-title">Throughput over time</h2>
+      <span class="card-sub">live ops/sec  ·  configured limit  ·  last 5 minutes</span>
+    </div>
+    <div class="card-body chart-body">
+      <canvas id="chart"></canvas>
+    </div>
+  </section>
+
+  <!-- EVENTS -->
+  <section class="card span-7">
+    <div class="card-header">
+      <h2 class="card-title">Autoscaler events</h2>
+      <span class="card-sub">most recent at top</span>
+    </div>
+    <div id="events-list" class="card-body events-body">
+      <div class="dim small">waiting for events…</div>
+    </div>
+  </section>
+
+  <!-- MEMTIER -->
+  <section class="card span-5" id="memtier-card">
+    <div class="card-header">
+      <h2 class="card-title">Load generator</h2>
+      <span class="card-sub" id="memtier-status">idle</span>
+    </div>
+    <form id="memtier-form" class="card-body stack">
+      <div>
+        <label class="field-label">Preset</label>
+        <div id="preset-buttons" class="preset-row"></div>
+      </div>
+
+      <div class="grid-2">
+        <div>
+          <label class="field-label">Connections</label>
+          <div class="slider-row">
+            <input type="range" min="1" max="200" id="p-clients">
+            <span id="p-clients-v" class="slider-value">50</span>
+          </div>
+        </div>
+        <div>
+          <label class="field-label">Pipeline</label>
+          <div class="slider-row">
+            <input type="range" min="1" max="100" id="p-pipeline">
+            <span id="p-pipeline-v" class="slider-value">10</span>
+          </div>
+        </div>
+        <div>
+          <label class="field-label">Threads</label>
+          <div class="slider-row">
+            <input type="range" min="1" max="8" id="p-threads">
+            <span id="p-threads-v" class="slider-value">4</span>
+          </div>
+        </div>
+        <div>
+          <label class="field-label">Duration</label>
+          <div class="slider-row">
+            <input type="range" min="30" max="1800" step="30" id="p-time">
+            <span id="p-time-v" class="slider-value">600</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div>
+          <label class="field-label">Workload</label>
+          <select id="p-ratio">
+            <option value="1:10">Read-heavy · 1:10</option>
+            <option value="1:1">Mixed · 1:1</option>
+            <option value="10:1">Write-heavy · 10:1</option>
+            <option value="1:0">Writes only</option>
+            <option value="0:1">Reads only</option>
+          </select>
+        </div>
+        <div>
+          <label class="field-label">Value size</label>
+          <select id="p-size">
+            <option value="64">64 B</option>
+            <option value="256">256 B</option>
+            <option value="512" selected>512 B</option>
+            <option value="1024">1 KB</option>
+            <option value="4096">4 KB</option>
+            <option value="16384">16 KB</option>
+          </select>
+        </div>
+        <div>
+          <label class="field-label">Key range</label>
+          <select id="p-keys">
+            <option value="100000">100 k</option>
+            <option value="1000000">1 M</option>
+            <option value="2000000" selected>2 M</option>
+            <option value="10000000">10 M</option>
+          </select>
+        </div>
+        <div class="estimate">
+          <span class="field-label">Inflight</span>
+          <span id="estimated-load" class="estimate-value">—</span>
+        </div>
+      </div>
+
+      <div>
+        <label class="field-label">Command preview</label>
+        <pre id="cmd-preview" class="cmd-preview">—</pre>
+      </div>
+
+      <div class="actions">
+        <button type="button" id="btn-start" class="btn btn-start">
+          <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg> <span id="btn-start-label">Start load</span>
+        </button>
+        <button type="button" id="btn-stop" class="btn btn-stop" disabled>
+          <svg viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg> Stop load
+        </button>
+      </div>
+    </form>
+  </section>
+
+  <!-- ADMIN PANEL -->
+  <section class="card span-12 admin-card">
+    <div class="card-header">
+      <h2 class="card-title"><span class="admin-icon">⚙</span> Admin tools <span class="admin-warn">danger zone</span></h2>
+      <span class="card-sub">use between demo runs to reset state</span>
+    </div>
+    <div class="card-body admin-body">
+      <div class="admin-action">
+        <div class="admin-action-text">
+          <div class="admin-action-title">Flush database</div>
+          <div class="admin-action-desc">Wipes all keys (FLUSHDB). Use after a "Memory fill" preset to bring memory usage back to ~0.</div>
+        </div>
+        <button type="button" id="btn-flushdb" class="btn btn-admin">FLUSHDB</button>
+      </div>
+      <div class="admin-action">
+        <div class="admin-action-text">
+          <div class="admin-action-title">Reset DB to baseline</div>
+          <div class="admin-action-desc">Force-scales the DB back to <strong id="reset-baseline-label">1,000 ops/sec · 2 GB</strong> via the Redis Cloud REST API (bypasses the autoscaler — instant reset for the next demo).</div>
+        </div>
+        <button type="button" id="btn-reset" class="btn btn-admin">Reset to baseline</button>
+      </div>
+      <div class="admin-action">
+        <div class="admin-action-text">
+          <div class="admin-action-title">Reload scaling rules</div>
+          <div class="admin-action-desc">Re-registers the 4 autoscaler rules (Throughput up/down, Memory up/down). Use if the autoscaler returns 500 on alerts or you accidentally wiped its rule storage.</div>
+        </div>
+        <button type="button" id="btn-reload-rules" class="btn btn-admin">Reload rules</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- DIAGNOSTICS -->
+  <section class="span-12 diag">
+    <div>
+      <span id="diag-db" class="hidden"></span>
+      <span id="diag-prom" class="hidden"></span>
+    </div>
+    <div>redis-autoscaler.platformengineer.io</div>
+  </section>
+
+</main>
+
+<div id="toasts"></div>
+
+<script src="/app.js"></script>
+</body>
+</html>

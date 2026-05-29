@@ -1,0 +1,38 @@
+# =============================================================================
+# Public deployment overlay — adds Caddy in front of the UI for automatic
+# Let's Encrypt TLS via the ACME protocol.
+#
+# Requirements:
+#   1. A DNS A/AAAA record pointing DEMO_DOMAIN to this host.
+#   2. Ports 80 + 443 reachable from the public Internet.
+#   3. DEMO_DOMAIN + DEMO_EMAIL set in .env.
+#
+# Bring up:
+#   docker compose -f docker-compose.yml -f docker-compose.public.yml up -d
+# =============================================================================
+
+services:
+  ui:
+    # The UI no longer needs to expose its port publicly — Caddy proxies it.
+    ports: !reset []
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy
+    restart: unless-stopped
+    environment:
+      DEMO_DOMAIN: ${DEMO_DOMAIN}
+      DEMO_EMAIL:  ${DEMO_EMAIL}
+    volumes:
+      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - ui
+
+volumes:
+  caddy-data:
+  caddy-config:

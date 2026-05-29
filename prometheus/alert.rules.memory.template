@@ -1,0 +1,13 @@
+  - name: RedisMemoryScaleUp
+    rules:
+      # Only included when MEMORY_SCALING_ENABLED=true. Scaling memory has
+      # direct cost impact (shard tier change), so we keep it OFF by default.
+      - alert: IncreaseMemory
+        expr: bdb_used_memory / bdb_memory_limit * 100 > ${MEMORY_THRESHOLD_PCT}
+        for: ${MEMORY_THRESHOLD_FOR}
+        labels:
+          severity: warning
+          db: "{{ $labels.bdb }}"
+        annotations:
+          summary:     "High Redis memory usage"
+          description: "Memory above threshold on db {{ $labels.bdb }} — scaling UP (Atomic Slot Migration)"

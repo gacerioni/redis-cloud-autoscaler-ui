@@ -1,0 +1,23 @@
+# =============================================================================
+# Optional overlay — publishes the internal services (autoscaler, prometheus,
+# alertmanager) to the host so an operator can inspect them directly.
+#
+# Use only for debugging / dev. Production should never need this — the UI
+# is the only intended entrypoint.
+#
+# Bring up:
+#   docker compose -f docker-compose.yml -f docker-compose.expose.yml up -d
+# =============================================================================
+
+services:
+  autoscaler:
+    ports:
+      - "${AUTOSCALER_PORT:-8080}:8080"
+
+  prometheus:
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+
+  alertmanager:
+    ports:
+      - "${ALERTMANAGER_PORT:-9093}:9093"

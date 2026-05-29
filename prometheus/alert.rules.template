@@ -1,0 +1,20 @@
+groups:
+  - name: RedisThroughputScaleUp
+    rules:
+      # WHY ONLY SCALE-UP?
+      # Reactive scale-down in production is dangerous: oscillating traffic
+      # around the threshold can yo-yo the cluster and destabilize latency.
+      # Real customer rollouts schedule scale-down (cron or manual) instead.
+      # This demo mimics the scheduled approach via a backend timer that
+      # hits the Redis Cloud REST API directly (NOT via the autoscaler).
+
+      # Threshold computed at boot from BASELINE_OPS × THROUGHPUT_THRESHOLD_PCT/100.
+      - alert: IncreaseThroughput
+        expr: bdb_instantaneous_ops_per_sec > ${THROUGHPUT_THRESHOLD_OPS}
+        for: ${THROUGHPUT_THRESHOLD_FOR}
+        labels:
+          severity: warning
+          db: "{{ $labels.bdb }}"
+        annotations:
+          summary:     "High Redis throughput"
+          description: "Throughput above threshold on db {{ $labels.bdb }} — scaling UP"

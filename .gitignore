@@ -1,0 +1,26 @@
+# env file — must never be committed
+.env
+.env.local
+*.env.bak
+
+# python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# editor
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# rendered prometheus configs (generated at boot into a volume)
+prometheus/prometheus.yml
+prometheus/alert.rules
+
+# docker
+*.log
