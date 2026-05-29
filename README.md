@@ -9,7 +9,7 @@ One `docker compose up -d` away from watching your Redis Cloud Pro database elas
 [![Docker Pulls](https://img.shields.io/docker/pulls/gacerioni/redis-cloud-autoscaler-ui)](https://hub.docker.com/r/gacerioni/redis-cloud-autoscaler-ui)
 [![Image Size](https://img.shields.io/docker/image-size/gacerioni/redis-cloud-autoscaler-ui/latest)](https://hub.docker.com/r/gacerioni/redis-cloud-autoscaler-ui/tags)
 [![Multi-arch](https://img.shields.io/badge/arch-amd64%20%7C%20arm64-informational)](https://hub.docker.com/r/gacerioni/redis-cloud-autoscaler-ui/tags)
-[![CI](https://img.shields.io/github/actions/workflow/status/gacerioni/redis-cloud-autoscaler-ui/ci.yml?branch=main)](.github/workflows/ci.yml)
+[![CI](https://img.shields.io/github/actions/workflow/status/Redislabs-Solution-Architects/redis-cloud-autoscaler-ui/ci.yml?branch=main)](.github/workflows/ci.yml)
 
 [Quickstart](#-five-minute-quickstart) ·
 [Architecture](#%EF%B8%8F-architecture) ·
@@ -61,7 +61,7 @@ with API keys and a database, and **network reachability** from this host to
 the database's private endpoint (PSC, VPC peering, Transit Gateway, …).
 
 ```bash
-git clone https://github.com/gacerioni/redis-cloud-autoscaler-ui.git
+git clone https://github.com/Redislabs-Solution-Architects/redis-cloud-autoscaler-ui.git
 cd redis-cloud-autoscaler-ui
 cp .env.example .env
 $EDITOR .env                   # fill in 5 required fields (see below)
@@ -132,7 +132,7 @@ flowchart LR
 | `autoscaler` | `ghcr.io/redis-field-engineering/redis-cloud-autoscaler` | long-running | the unchanged upstream service |
 | `prometheus` | `prom/prometheus` | long-running | scrapes `bdb_*` metrics from the DB's `:8070` endpoint |
 | `alertmanager` | `prom/alertmanager` | long-running | routes `IncreaseThroughput` (and optionally `IncreaseMemory`) webhooks |
-| `ui` | `gacerioni/redis-cloud-autoscaler-ui` | long-running | this repo — FastAPI + Chart.js dashboard, load generator, admin actions |
+| `ui` | `Redislabs-Solution-Architects/redis-cloud-autoscaler-ui` | long-running | this repo — FastAPI + Chart.js dashboard, load generator, admin actions |
 
 **Only the UI (`:8000`) is published to the host by default.** Prometheus / Alertmanager / Autoscaler stay on the internal compose network. To inspect them directly, opt-in:
 
