@@ -12,7 +12,12 @@ Tempo estimado: **~10 minutos**, sendo a maior parte preenchendo um `.env`.
 
 1. Uma **VM Linux** (Ubuntu 22.04+, Debian 12+, RHEL 9+, etc) com:
    - **2 vCPU / 4 GB RAM** já é suficiente
-   - **Docker Engine** e **docker compose v2**
+   - **Docker Engine** e **Docker Compose v2** (`docker compose`, com espaço — NÃO o
+     legado `docker-compose` v1 do `apt`. A stack usa
+     `depends_on: condition: service_completed_successfully`, que só existe na v2.
+     Se você só tiver v1, vai ver `Container ... exited with code 5` nos containers
+     `prometheus` e `alertmanager`. Veja a seção
+     [Instalando Docker Compose v2](#instalando-docker-compose-v2) abaixo.)
    - **Conectividade privada** ao endpoint interno do seu Redis Cloud
      (via Private Service Connect no GCP, VPC peering na AWS, ou Transit Gateway)
 2. Uma **subscription Redis Cloud Pro** com:
@@ -22,6 +27,29 @@ Tempo estimado: **~10 minutos**, sendo a maior parte preenchendo um `.env`.
 3. Acesso ao **endpoint interno na porta `:8070`** (métricas Prometheus
    nativas do Redis Cloud — é como vamos coletar `bdb_*`)
 4. **Git**
+
+### Instalando Docker Compose v2
+
+Ubuntu 22.04/24.04 não traz o plugin v2 por default — o que tem em `apt` é o legado
+`docker-compose` v1 (Python, 1.29.2). Pra instalar o v2 oficial:
+
+```bash
+# Se você tem o v1 antigo, remove primeiro:
+sudo apt-get remove -y docker-compose
+
+# Instala o plugin v2 oficial em /usr/local/lib/docker/cli-plugins/
+sudo mkdir -p /usr/local/lib/docker/cli-plugins
+sudo curl -fsSL \
+  "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-$(uname -m)" \
+  -o /usr/local/lib/docker/cli-plugins/docker-compose
+sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+
+# Valida — deve imprimir "Docker Compose version v2.x" (ou superior)
+docker compose version
+```
+
+Alternativa: usa o script oficial `curl -fsSL https://get.docker.com | sudo sh` que
+já instala Docker Engine + plugin v2 juntos.
 
 > 🔒 **Segurança**: a stack faz chamadas autenticadas pra REST API do Redis
 > Cloud usando as suas keys, e expõe o banco ao `memtier_benchmark` pra
@@ -35,7 +63,7 @@ Tempo estimado: **~10 minutos**, sendo a maior parte preenchendo um `.env`.
 ## Passo 1 · Clonar o repo
 
 ```bash
-git clone https://github.com/gacerioni/redis-cloud-autoscaler-ui.git
+git clone https://github.com/Redislabs-Solution-Architects/redis-cloud-autoscaler-ui.git
 cd redis-cloud-autoscaler-ui
 ```
 
@@ -306,6 +334,42 @@ certbot, sem cron de renovação — ele cuida sozinho.
 
 ## Solução de problemas
 
+### `Container ... exited with code 5` em `prometheus` e `alertmanager`
+
+Indica que você está rodando `docker-compose` v1 (o legado do `apt`), que não
+suporta `depends_on: condition: service_completed_successfully`. Veja
+[Instalando Docker Compose v2](#instalando-docker-compose-v2) e refaça o boot:
+
+```bash
+docker compose down -v
+docker compose up -d
+```
+
+### `autoscaler-init` saiu com exit 5 + `jq: parse error`
+
+O container init detectou problema com as credenciais. Veja os logs:
+
+```bash
+docker logs autoscaler-init
+```
+
+Mensagens que você pode encontrar (todas com fix óbvio):
+
+| Mensagem | Causa | Fix |
+|---|---|---|
+| `looks malformed for REDIS_CLOUD_*_KEY (contains space / # / quote)` | Comentário inline ou aspas vazaram pro valor | Edite `.env`, remova `# comment` e aspas das linhas das chaves |
+| `REST API returned HTTP 500` | `REDIS_CLOUD_ACCOUNT_KEY` e `REDIS_CLOUD_API_KEY` estão trocados | Inverta os dois no `.env` |
+| `REST API returned HTTP 401` | Key revogada ou conta errada | Recrie no console |
+| `REST API returned HTTP 404` | `REDIS_CLOUD_SUBSCRIPTION_ID` não existe | Confira o ID na URL do console |
+| `subscription returned no prometheusEndpoint` | Sub é Essentials, não Pro | Migre o banco pra uma subscription Pro |
+| `REST API keys look too short` | Cole incompleto | Re-copie a key inteira do console |
+
+Depois do fix:
+```bash
+docker compose down -v
+docker compose up -d
+```
+
 ### UI fica em "connecting..." pra sempre
 
 ```bash
@@ -314,6 +378,8 @@ docker compose logs ui --tail 50
 
 Provavelmente erro no boot. Causas comuns:
 - `REDIS_CLOUD_*_KEY` trocados → 401 → autoscaler não consegue registrar rules
+  (o `init-config` já pega isso antes — se essa mensagem chegar até a UI, é
+  porque o init passou mas alguma outra coisa quebrou)
 - `REDIS_CLOUD_INTERNAL_ENDPOINT` errado → Prometheus não scrape
 
 ### Alerts ficam `unknown` ao invés de `inactive`
@@ -365,7 +431,7 @@ docker rmi $(docker images "gacerioni/redis-cloud-autoscaler-ui*" -q) 2>/dev/nul
 - Projeto base do autoscaler (Java, suportado pelo Field Engineering da Redis):
   https://github.com/redis-field-engineering/redis-cloud-autoscaler
 - Este repo (UI + bootstrap):
-  https://github.com/gacerioni/redis-cloud-autoscaler-ui
+  https://github.com/Redislabs-Solution-Architects/redis-cloud-autoscaler-ui
 - Documentação Redis Cloud Pro:
   https://redis.io/docs/latest/operate/rc/
 

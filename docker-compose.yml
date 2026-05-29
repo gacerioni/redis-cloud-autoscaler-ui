@@ -40,28 +40,69 @@ services:
         export THROUGHPUT_THRESHOLD_OPS=$$(( $${BASELINE_OPS:-25000} * $${THROUGHPUT_THRESHOLD_PCT:-80} / 100 ))
         MEM_ENABLED=$$(echo "$${MEMORY_SCALING_ENABLED:-false}" | tr '[:upper:]' '[:lower:]')
 
-        # Auto-discover the Prometheus scrape endpoint if the user didn't set it.
-        # Prometheus needs this hostname rendered into prometheus.yml BEFORE it
-        # starts — too early for the UI's Python-side discovery to help.
+        # --- Validate REST API credentials shape ---------------------------
+        # Catches the most common .env editing mistakes BEFORE any HTTP call:
+        # 1) Inline comments that leaked into the value
+        # 2) Quote marks left around the value
+        # 3) Suspicious lengths (Redis Cloud keys are typically ~50 chars)
+        for VAR in REDIS_CLOUD_ACCOUNT_KEY REDIS_CLOUD_API_KEY REDIS_CLOUD_SUBSCRIPTION_ID DEMO_DB_ID; do
+          VAL=$$(eval "echo \$$$$VAR")
+          if [ -z "$$VAL" ]; then
+            echo "ERROR: $$VAR is empty in .env"; exit 1
+          fi
+          case "$$VAL" in
+            *' '*|*'#'*|*'"'*|*"'"*)
+              echo "ERROR: $$VAL looks malformed for $$VAR (contains space / # / quote)."
+              echo "       Did you leave an inline comment or quotes in .env? Keep comments on their own lines."
+              exit 1 ;;
+          esac
+        done
+        # Both REST keys should be ~50 chars; warn loudly if very off.
+        ACC_LEN=$${#REDIS_CLOUD_ACCOUNT_KEY}
+        API_LEN=$${#REDIS_CLOUD_API_KEY}
+        if [ "$$ACC_LEN" -lt 30 ] || [ "$$API_LEN" -lt 30 ]; then
+          echo "ERROR: REST API keys look too short (ACCOUNT=$$ACC_LEN API=$$API_LEN chars)."
+          echo "       Expected ~50 each. Re-check .env."
+          exit 1
+        fi
+
+        # --- Discover Prometheus endpoint via REST API ---------------------
+        # Always probe the REST API at boot — it doubles as a credential
+        # smoke test AND auto-discovers REDIS_CLOUD_INTERNAL_ENDPOINT if
+        # the user didn't pin it. We check HTTP status BEFORE feeding the
+        # body to jq, so credential errors produce a readable message
+        # instead of "jq: parse error".
+        echo "probing REST API: GET /subscriptions/$${REDIS_CLOUD_SUBSCRIPTION_ID}"
+        HTTP_CODE=$$(curl -sS --max-time 15 -o /tmp/sub.json -w "%{http_code}" \
+          -H "Accept: application/json" \
+          -H "x-api-key: $${REDIS_CLOUD_ACCOUNT_KEY}" \
+          -H "x-api-secret-key: $${REDIS_CLOUD_API_KEY}" \
+          "$${REDIS_CLOUD_API_BASE:-https://api.redislabs.com/v1}/subscriptions/$${REDIS_CLOUD_SUBSCRIPTION_ID}" || echo "000")
+        if [ "$$HTTP_CODE" != "200" ]; then
+          echo "ERROR: REST API returned HTTP $$HTTP_CODE."
+          echo "       Common causes:"
+          echo "         500 → REDIS_CLOUD_ACCOUNT_KEY / REDIS_CLOUD_API_KEY are swapped in .env"
+          echo "               (ACCOUNT_KEY is the 'Account key' / public; API_KEY is the 'User key' / secret)"
+          echo "         401 → key revoked or wrong account"
+          echo "         404 → REDIS_CLOUD_SUBSCRIPTION_ID does not exist"
+          echo "       Raw body (first 400 bytes):"
+          head -c 400 /tmp/sub.json; echo
+          exit 1
+        fi
         if [ -z "$${REDIS_CLOUD_INTERNAL_ENDPOINT}" ]; then
-          echo "REDIS_CLOUD_INTERNAL_ENDPOINT empty — auto-discovering from REST API..."
-          RAW=$$(curl -sS --max-time 10 \
-            -H "x-api-key: $${REDIS_CLOUD_ACCOUNT_KEY}" \
-            -H "x-api-secret-key: $${REDIS_CLOUD_API_KEY}" \
-            "$${REDIS_CLOUD_API_BASE:-https://api.redislabs.com/v1}/subscriptions/$${REDIS_CLOUD_SUBSCRIPTION_ID}" \
-            | jq -r ".prometheusEndpoint // empty")
-          # strip :PORT if present
+          RAW=$$(jq -r ".prometheusEndpoint // empty" /tmp/sub.json)
           export REDIS_CLOUD_INTERNAL_ENDPOINT=$${RAW%%:*}
           if [ -z "$${REDIS_CLOUD_INTERNAL_ENDPOINT}" ]; then
-            echo "ERROR: could not auto-discover prometheusEndpoint — check REST API credentials"
+            echo "ERROR: subscription returned no prometheusEndpoint."
+            echo "       Is this an Essentials subscription? The autoscaler requires Pro."
             exit 1
           fi
-          echo "auto-discovered: $${REDIS_CLOUD_INTERNAL_ENDPOINT}"
+          echo "auto-discovered prometheusEndpoint: $${REDIS_CLOUD_INTERNAL_ENDPOINT}"
         fi
 
         echo "rendering: endpoint=$${REDIS_CLOUD_INTERNAL_ENDPOINT} threshold=$$THROUGHPUT_THRESHOLD_OPS memory=$$MEM_ENABLED"
         # IMPORTANT: pass explicit var list to envsubst. Without it, envsubst
-        # would also expand Prometheus' own `$labels.foo` syntax in the alert
+        # would also expand Prometheus' own `$$labels.foo` syntax in the alert
         # rules templates, mangling them to `.foo` and breaking template
         # evaluation at alert time. We only want to substitute OUR variables.
         SUBST_VARS='$${REDIS_CLOUD_INTERNAL_ENDPOINT} $${REDIS_CLOUD_AUTOSCALER_HOST} $${THROUGHPUT_THRESHOLD_OPS} $${THROUGHPUT_THRESHOLD_FOR} $${MEMORY_THRESHOLD_PCT} $${MEMORY_THRESHOLD_FOR}'

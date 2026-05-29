@@ -56,9 +56,13 @@ or to yourself.
 
 ## ⚡ Five-minute quickstart
 
-You need: **Docker**, **docker compose v2**, a **Redis Cloud Pro** subscription
-with API keys and a database, and **network reachability** from this host to
-the database's private endpoint (PSC, VPC peering, Transit Gateway, …).
+You need: **Docker**, **Docker Compose v2** (`docker compose`, not the legacy
+`docker-compose` v1 from `apt` — the stack uses
+`depends_on: condition: service_completed_successfully`, which only v2 supports.
+See [Compose v2 install snippet](TUTORIAL.pt-BR.md#instalando-docker-compose-v2)
+if you don't have it), a **Redis Cloud Pro** subscription with API keys and a
+database, and **network reachability** from this host to the database's
+private endpoint (PSC, VPC peering, Transit Gateway, …).
 
 ```bash
 git clone https://github.com/Redislabs-Solution-Architects/redis-cloud-autoscaler-ui.git
@@ -250,8 +254,11 @@ Caddy fetches and renews the certificate automatically. No certbot, no cron.
 
 | Symptom | Action |
 |---|---|
+| `Container … exited with code 5` (prometheus / alertmanager) | You're on `docker-compose` v1 — install Compose v2, then `docker compose down -v && docker compose up -d` |
+| `autoscaler-init` exits with code 5 | `docker logs autoscaler-init` — it now prints exactly which check failed (key shape, HTTP code from the REST API, etc) |
+| **`REST API returned HTTP 500`** in the init logs | `REDIS_CLOUD_API_KEY` ⇄ `REDIS_CLOUD_ACCOUNT_KEY` swapped *(they map to `x-api-secret-key` / `x-api-key` respectively)* |
+| **`looks malformed … (contains space / # / quote)`** in init logs | Inline `# comment` or quotes leaked into a value in `.env`. Move comments above the variables, no quotes on values. |
 | UI says `connecting…` forever | `docker compose logs ui` — check for bootstrap errors |
-| **`DB API: 401`** in the diagnostics row | `REDIS_CLOUD_API_KEY` ⇄ `REDIS_CLOUD_ACCOUNT_KEY` swapped *(they map to `x-api-secret-key` / `x-api-key` respectively)* |
 | Prometheus target `rediscloud` red | network can't reach `<endpoint>:8070` — fix PSC / VPC peering before retrying |
 | Autoscaler not reacting to alerts | Open the **Admin** panel → *Reload rules*. Confirm `docker compose logs autoscaler` shows `Received alert` |
 | `Database size is smaller than usage` when downsizing | Admin → *FLUSHDB* (safe — preserves the autoscaler's metadata) before reducing memory |
