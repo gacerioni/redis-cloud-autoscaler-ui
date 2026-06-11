@@ -9,15 +9,20 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 ARG PYTHON_VERSION=3.12
+# Pin memtier to a release tag. Cloning master bit us once: a new commit
+# started linking libevent_pthreads, so images built two weeks apart had
+# different runtime library needs — ours passed, the customer's CI failed.
+ARG MEMTIER_VERSION=2.4.1
 
 FROM debian:bookworm-slim AS memtier-builder
+ARG MEMTIER_VERSION
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         build-essential autoconf automake libtool pkg-config \
         libevent-dev libpcre3-dev libssl-dev zlib1g-dev \
         git ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
-RUN git clone --depth 1 https://github.com/RedisLabs/memtier_benchmark.git . \
+RUN git clone --depth 1 --branch "${MEMTIER_VERSION}" https://github.com/RedisLabs/memtier_benchmark.git . \
     && autoreconf -ivf && ./configure && make -j"$(nproc)" \
     && strip memtier_benchmark
 
@@ -39,7 +44,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # The UI now talks to /var/run/docker.sock directly via stdlib HTTP, so
 # the image stays slim AND works against any host daemon version.
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        libevent-2.1-7 libevent-openssl-2.1-7 libssl3 zlib1g libpcre3 \
+        libevent-2.1-7 libevent-core-2.1-7 libevent-extra-2.1-7 \
+        libevent-openssl-2.1-7 libevent-pthreads-2.1-7 \
+        libssl3 zlib1g libpcre3 \
         redis-tools curl jq ca-certificates \
     && rm -rf /var/lib/apt/lists/* /usr/share/doc /usr/share/man
 
@@ -47,7 +54,10 @@ COPY --from=memtier-builder /src/memtier_benchmark /usr/local/bin/memtier_benchm
 
 # Smoke-test memtier after the binary is in place — fails the build now
 # (instead of leaking to runtime) if any shared library is missing.
-RUN memtier_benchmark --version
+# The ldd line prints the resolved dependency list into the build log, so
+# a future "cannot open shared object file" failure shows exactly which
+# library went missing without anyone having to reproduce the build.
+RUN ldd /usr/local/bin/memtier_benchmark && memtier_benchmark --version
 
 WORKDIR /app
 COPY requirements.txt .
