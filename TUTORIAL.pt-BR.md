@@ -129,11 +129,11 @@ O que esperar:
 
 > Os presets têm intensidade absoluta (calibrados pra um banco de ~25k ops/sec). Em banco pequeno, qualquer preset dispara o scale-up — esperado, não é bug.
 
-**Stop load** → o card *Scheduled scale-down* arma um countdown (`AUTO_RESET_SECONDS`, default 5 min) e o banco volta ao baseline sozinho. Pressa? **Reset now**.
+**Stop load** → por padrão o banco **fica** escalado (sem scale-down automático). Pra voltar ao baseline, clique **Reset now** (ou `POST /api/admin/reset-baseline`). A memória nunca é tocada no reset (a menos que você tenha ligado memory scaling).
 
-Scale-down é **agendado, não reativo** — por design. Reativo causa yo-yo de shards em produção. A memória nunca é tocada no reset (a menos que você tenha ligado memory scaling).
-
-> **Evento real (segurar a capacidade)?** Set `AUTO_RESET_ENABLED=false` no `.env`. O banco escala e **fica** escalado — sem scale-down automático — até você clicar **Reset now**. Não precisa fingir uma janela gigante.
+> **Produção (padrão):** o scale-down automático vem **desligado** (`AUTO_RESET_ENABLED=false`). É de propósito: o autoscaler reage a tráfego real, e um timer puxando o banco de volta no meio do evento brigaria com ele (yo-yo). O banco segura a capacidade até reset manual.
+>
+> **Demo repetível:** set `AUTO_RESET_ENABLED=true` pra o banco voltar ao baseline sozinho `AUTO_RESET_SECONDS` após cada scale-up.
 
 ## Troubleshooting
 

@@ -215,14 +215,18 @@ BASELINE_MEM_GB=2.5
 MEMORY_STEP_GB=2                  # +N GB per memory trigger
 MEMORY_CEILING_GB=5
 
-# Scheduled scale-down
-AUTO_RESET_ENABLED=true           # false = SUSPEND it (DB stays scaled until you reset manually)
+# Scheduled scale-down — OFF by default (production-safe)
+AUTO_RESET_ENABLED=false          # true = opt in to the demo auto-scale-down
 AUTO_RESET_SECONDS=300            # if enabled: back to baseline N seconds after a scale-up
 ```
 
-**Holding capacity for a real event?** Set `AUTO_RESET_ENABLED=false`. The DB
-scales up and *stays* up — no automatic scale-down — until you click **Reset
-now** (or `POST /api/admin/reset-baseline`). No need to fake a huge window.
+**Production (default):** the DB scales up and *stays* up — no automatic
+scale-down — until you click **Reset now** (or `POST /api/admin/reset-baseline`).
+This is on purpose: the autoscaler reacts to real traffic, and a timer that
+pulled the DB back to baseline mid-event would fight it (yo-yo).
+
+**Repeatable demos:** set `AUTO_RESET_ENABLED=true` so the DB auto-returns to
+baseline `AUTO_RESET_SECONDS` after each scale-up.
 
 Change anything, then:
 
@@ -252,7 +256,7 @@ These show up in the dashboard header.
 | **Memory scaling** off (`MEMORY_SCALING_ENABLED=false`) | scaling memory has direct cost impact. The dashboard still shows live memory usage as context, but no `IncreaseMemory` alert/rule is created. |
 | **Throughput cap** at `40 000 ops/sec` | covers typical event-driven peaks (live sports / live streaming / voting events around 30 k ops/sec) with headroom, while preventing runaway scale. |
 | **Internal ports** unpublished | only `:8000` (UI) is on the host. Prometheus/Alertmanager/Autoscaler are reachable only from inside the compose network. |
-| **Reactive scale-down** disabled by design | yo-yo migrations destabilize clusters in production. The UI runs a scheduled timer per scale-up event (suspend it with `AUTO_RESET_ENABLED=false`) and calls the REST API directly — independently of the autoscaler. |
+| **Automatic scale-down** off (`AUTO_RESET_ENABLED=false`) | production-safe default: the DB holds its scaled capacity until a manual reset. Reactive/timed scale-down yo-yos against the autoscaler on real traffic. Set `true` only for repeatable demos. |
 
 ---
 

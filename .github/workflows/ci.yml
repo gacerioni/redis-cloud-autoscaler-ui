@@ -33,9 +33,10 @@ jobs:
           REDIS_CLOUD_DATABASE_ID=42 python -c "import app.config as c; assert c.DB_ID == 42, c.DB_ID"
           # legacy alias must still resolve
           DEMO_DB_ID=99 python -c "import app.config as c; assert c.DB_ID == 99, c.DB_ID"
-          # suspend flag
-          AUTO_RESET_ENABLED=false REDIS_CLOUD_DATABASE_ID=1 python -c "import app.config as c; assert c.AUTO_RESET_ACTIVE is False"
-          REDIS_CLOUD_DATABASE_ID=1 python -c "import app.config as c; assert c.AUTO_RESET_ACTIVE is True"
+          # scheduled scale-down: OFF by default (production-safe), opt-in with true
+          REDIS_CLOUD_DATABASE_ID=1 python -c "import app.config as c; assert c.AUTO_RESET_ACTIVE is False"
+          AUTO_RESET_ENABLED=true REDIS_CLOUD_DATABASE_ID=1 python -c "import app.config as c; assert c.AUTO_RESET_ACTIVE is True"
+          AUTO_RESET_ENABLED=true AUTO_RESET_SECONDS=0 REDIS_CLOUD_DATABASE_ID=1 python -c "import app.config as c; assert c.AUTO_RESET_ACTIVE is False"
 
       - name: Validate docker-compose.yml
         run: |

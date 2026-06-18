@@ -114,12 +114,18 @@ MEMORY_CEILING_GB  = _float("MEMORY_CEILING_GB", 5.0)
 THROUGHPUT_THRESHOLD_OPS = int(BASELINE_OPS * THROUGHPUT_THRESHOLD_PCT / 100)
 
 # --------------------------------------------------------------------------- Scheduled scale-down
-# AUTO_RESET_ENABLED=false suspends the scheduled scale-down entirely: a
-# scaled-up DB stays up until someone resets it manually (UI "Reset now" or
-# POST /api/admin/reset-baseline). Use this for real events where you want the
-# DB to hold its scaled capacity for the whole window (e.g. a live match).
-# A non-positive AUTO_RESET_SECONDS is also treated as disabled.
-AUTO_RESET_ENABLED = _bool("AUTO_RESET_ENABLED", True)
+# OFF by default — production-safe. The automatic scale-down is a DEMO
+# convenience: it returns the DB to baseline a few minutes after a scale-up
+# so the next run starts clean. In production it is dangerous, because the
+# autoscaler scales on REAL traffic (no memtier involved), so this timer
+# would yank the DB back to baseline mid-event and yo-yo against the
+# autoscaler. So:
+#   AUTO_RESET_ENABLED=false (default) → DB holds its scaled capacity until a
+#                                        manual reset (UI "Reset now" / REST).
+#   AUTO_RESET_ENABLED=true            → opt in to the demo auto-scale-down
+#                                        after AUTO_RESET_SECONDS.
+# A non-positive AUTO_RESET_SECONDS also keeps it disabled.
+AUTO_RESET_ENABLED = _bool("AUTO_RESET_ENABLED", False)
 AUTO_RESET_SECONDS = _int("AUTO_RESET_SECONDS", 300)
 # Single source of truth for "is the scheduler armed at all".
 AUTO_RESET_ACTIVE  = AUTO_RESET_ENABLED and AUTO_RESET_SECONDS > 0

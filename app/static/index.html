@@ -228,7 +228,7 @@
   <section class="card span-12 reset-card" id="reset-card">
     <div class="card-header">
       <h2 class="card-title"><span class="reset-icon">⏱</span> Scheduled scale-down</h2>
-      <span class="card-sub">demo-only window — see note</span>
+      <span class="card-sub">off by default — see note</span>
     </div>
     <div class="card-body reset-body">
       <div class="reset-main">
@@ -251,12 +251,13 @@
         </div>
       </div>
       <div class="reset-disclaimer">
-        <strong>How this works in production:</strong> reactive scale-down is dangerous —
-        oscillating traffic causes yo-yo scaling and destabilizes the cluster.
-        Real customers use either a manual trigger after the event or a long scheduled window
-        (typically <strong>≥ 3 hours</strong>) via cron. For the demo we use a short
-        <span id="reset-window-label">5 minute</span> window so the run is reproducible —
-        the autoscaler itself is scale-up only.
+        <strong>How this works in production:</strong> automatic scale-down is
+        <strong>off by default</strong> — the autoscaler reacts to real traffic, so a timer
+        that pulled the DB back to baseline mid-event would yo-yo against it. The DB holds
+        its scaled capacity until a manual <em>Reset now</em> (or a long scheduled window via
+        cron, typically <strong>≥ 3 hours</strong>). For repeatable demos you can opt in with
+        <code>AUTO_RESET_ENABLED=true</code>, which auto-returns to baseline after a short
+        <span id="reset-window-label">5 minute</span> window. The autoscaler itself is scale-up only.
       </div>
     </div>
   </section>
