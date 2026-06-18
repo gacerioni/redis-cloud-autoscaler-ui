@@ -86,9 +86,13 @@ Regras de edição: comentários só em linha própria, valores sem aspas, arqui
 ## 4 · Subir
 
 ```bash
+docker compose pull      # puxa a imagem mais nova (evita rodar versão velha cacheada)
 docker compose up -d
 docker compose ps        # esperado: 4 containers healthy (o init roda 1x e sai)
 ```
+
+> Re-deployando num host que já rodou uma versão antiga? O `up -d` reusa o
+> `latest` em cache e segue rodando código velho. Sempre `docker compose pull` antes.
 
 Confirme o boot:
 
@@ -137,6 +141,7 @@ Scale-down é **agendado, não reativo** — por design. Reativo causa yo-yo de 
 |---|---|---|
 | `prometheus`/`alertmanager` saem com `exit code 5` | Compose v1 | instale o v2 (pré-requisitos) → `docker compose down -v && docker compose up -d` |
 | `autoscaler-init` falha (exit ≠ 0) | config inválida | `docker logs autoscaler-init` — a mensagem diz exatamente o que corrigir (keys trocadas = HTTP 500; key com lixo; sub não é Pro) |
+| UI em crash-loop com `Missing required env var: DEMO_DB_ID`, ou comportamento de versão antiga | imagem `latest` velha em cache | `docker compose pull && docker compose up -d ui` |
 | Escala falha com **HTTP 403** (ou *Reset now* fala em "lacks permission") | User key sem role Owner | crie a User key com role **Owner** (Viewer/Logs Viewer não escalam) |
 | UI fica em `connecting…` | erro no boot | `docker compose logs ui --tail 50` |
 | Alertas ficam `unknown` | Prometheus não alcança a porta de métricas | volte ao passo 2 |

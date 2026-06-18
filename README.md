@@ -68,10 +68,15 @@ private endpoint (PSC, VPC peering, Transit Gateway, …).
 git clone https://github.com/Redislabs-Solution-Architects/redis-cloud-autoscaler-ui.git
 cd redis-cloud-autoscaler-ui
 cp .env.example .env
-$EDITOR .env                   # fill in 5 required fields (see below)
+$EDITOR .env                   # fill in TIER 1 (see below)
+docker compose pull            # always grab the latest UI image first
 docker compose up -d
 open http://localhost:8000     # the UI
 ```
+
+> **Re-deploying on a host that ran an older version?** Run `docker compose pull`
+> first. `docker compose up -d` reuses a cached `latest` image and will silently
+> keep running old code otherwise.
 
 That's it. The stack:
 
@@ -323,6 +328,7 @@ Caddy fetches and renews the certificate automatically. No certbot, no cron.
 | Symptom | Action |
 |---|---|
 | `Container … exited with code 5` (prometheus / alertmanager) | You're on `docker-compose` v1 — install Compose v2, then `docker compose down -v && docker compose up -d` |
+| UI crash-loops with `Missing required env var: DEMO_DB_ID`, or behaves like an older version | Stale cached `latest` image — `docker compose pull && docker compose up -d ui` |
 | `autoscaler-init` fails (non-zero exit) | `docker logs autoscaler-init` — it prints exactly which check failed (key shape, HTTP code from the REST API, etc) |
 | **`REST API returned HTTP 500`** in the init logs | `REDIS_CLOUD_API_KEY` ⇄ `REDIS_CLOUD_ACCOUNT_KEY` swapped *(they map to `x-api-secret-key` / `x-api-key` respectively)* |
 | **`looks malformed … (contains space / # / quote)`** in init logs | Inline `# comment` or quotes leaked into a value in `.env`. Move comments above the variables, no quotes on values. |
